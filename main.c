@@ -65,6 +65,9 @@ UART_HandleTypeDef huart2;
 const char MGC3130Init[]  = "MGC3130 initialization in progress...wait";
 const char MGC3130Ready[] = "MGC3130 device is ready";
 
+#define RST GPIO_PIN_6 
+#define TS_LINE GPIO_PIN_8 
+
 #ifdef PRINT_GESTURE_DATA
 	const char TouchSouth[]  				 = "Touch South";
 	const char TouchWest[]   				 = "Touch West";
@@ -340,14 +343,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC6 */
+  /*Configure GPIO pin : PC6 OUT-RESET*/
   GPIO_InitStruct.Pin = GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC8 */
+  /*Configure GPIO pin : PC8 IN/OUT TS_LINE*/
   GPIO_InitStruct.Pin = GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
@@ -361,44 +364,92 @@ void MGC3130_SetAdd(uint8_t Addr) {
 }
 
 void MGC3130_ResetDevice(uint8_t Rst) {
-	pinMode(Rst, OUTPUT);    	// Set Reset line as Output
-	digitalWrite(Rst, LOW);		// Reset MGC3130 device for 250 mSec
+	//pinMode(Rst, OUTPUT);    	// Set Reset line as Output
+	//digitalWrite(Rst, LOW);		// Reset MGC3130 device for 250 mSec
+
+	// Reset MGC3130 device for 250 mSec
+	HAL_GPIO_WritePin(GPIOC, RST, GPIO_PIN_RESET);
+	HAL_Delay(250);
 }
 
 void MGC3130_ExitResetDevice(uint8_t Rst) {
-	pinMode(Rst, OUTPUT);    	// Set Reset line as Output
-	digitalWrite(Rst, HIGH);
+	//pinMode(Rst, OUTPUT);    	// Set Reset line as Output
+	//digitalWrite(Rst, HIGH);
+	HAL_GPIO_WritePin(GPIOC, RST, GPIO_PIN_SET);
 }
 
 void MGC3130_Begin(uint8_t Ts, uint8_t Rst) {
 	HAL_UART_Transmit(&huart2,(uint8_t*)MGC3130Init,strlen(MGC3130Init),HAL_MAX_DELAY); //ReadStringFLASH((uint8_t *)MGC3130Init, strlen(MGC3130Init), TRUE);	// Print "MGC3130 initialization in progress...wait"
-			
+	
+	GPIO_InitTypeDef GPIO_InitStruct;
+	
+	//Set TS line as Input
+	GPIO_InitStruct.Pin = TS_LINE;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+	// Reset MGC3130 device for 250 mSec
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_RESET);
+	HAL_Delay(250);
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_SET);
+	HAL_Delay(250);
+	
 	//FirstStartPacket = TRUE;
-	WIRE.begin(_i2caddr);		// Initialize I2c with hardware address
-	pinMode(Ts, INPUT);    		// Set TS line as Input
-	pinMode(Rst, OUTPUT);    	// Set Reset line as Output
-	digitalWrite(Rst, LOW);		// Reset MGC3130 device for 250 mSec
-	delay(250);					// Delay
-	digitalWrite(Rst, HIGH);
-	delay(250);					// Delay
+	//WIRE.begin(_i2caddr);		// Initialize I2c with hardware address
+	//pinMode(Ts, INPUT);    		// Set TS line as Input
+//	pinMode(Rst, OUTPUT);    	// Set Reset line as Output
+//	digitalWrite(Rst, LOW);		// Reset MGC3130 device for 250 mSec
+//	delay(250);					// Delay
+//	digitalWrite(Rst, HIGH);
+//	delay(250);					// Delay
 	
 	HAL_UART_Transmit(&huart2,(uint8_t*)MGC3130Ready,strlen(MGC3130Ready),HAL_MAX_DELAY);  //ReadStringFLASH((uint8_t *)MGC3130Ready, strlen(MGC3130Ready), TRUE);	// Print "MGC3130 device is ready"
 }
 
 void MGC3130_ReleaseTsLine(uint8_t Ts) {
-    digitalWrite(Ts, HIGH);		//	Set TS line as Input
-    pinMode(Ts, INPUT);			//	Set TS level
+	GPIO_InitTypeDef GPIO_InitStruct;
+	
+	//Set TS line as Input
+	GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+//    digitalWrite(Ts, HIGH);		//	Set TS line as Input
+//    pinMode(Ts, INPUT);			//	Set TS level
 }
 
-boolean MGC3130_GetTsLineStatus(uint8_t Ts) {
-	if (digitalRead(Ts) == 0) {
-		//	MGC3130 put TS line LOW. Data is available
-		pinMode(Ts, OUTPUT);	//	Set TS line as Output
-		digitalWrite(Ts, LOW);	//	Set TS level
-		return TRUE;			//  Return TRUE;
-	}	
-	return FALSE;				//	Return FALSE
+bool MGC3130_GetTsLineStatus(uint8_t Ts) {
+	
+	GPIO_InitTypeDef GPIO_InitStruct;
+	
+	if(HAL_GPIO_ReadPin(GPIOC,TS_LINE)==0) //	MGC3130 put TS line LOW. Data is available
+	{
+		//Set TS line as OUTPUT AND LOW LEVEL
+		GPIO_InitStruct.Pin = TS_LINE;
+		GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+		GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+		HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+		
+		HAL_GPIO_WritePin(GPIOC,TS_LINE,GPIO_PIN_RESET);
+		
+		return true;
+		
+	}
+	
+	return false;
 }
+	
+	
+	
+//	
+//	if (digitalRead(Ts) == 0) {
+//		//	MGC3130 put TS line LOW. Data is available
+//		pinMode(Ts, OUTPUT);	//	Set TS line as Output
+//		digitalWrite(Ts, LOW);	//	Set TS level
+//		return TRUE;			//  Return TRUE;
+//	}	
+//	return FALSE;				//	Return FALSE
+//}
 
 void MGC3130_GetEvent(void) {
 	int  Counter = 0;
